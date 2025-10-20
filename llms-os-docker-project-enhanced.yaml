@@ -1,0 +1,1443 @@
+# llms-os-docker-project-enhanced.yaml
+# Version 2.0 - Tích hợp Mock API, Monitoring, Testing & Advanced Features
+
+project:
+  name: "LLMs_OS Docker Project Enhanced"
+  version: "2.0.0"
+  description: "Production-ready LLMs_OS with Mock API, Monitoring & Testing"
+  features:
+    - "Mock OpenRouter API for testing"
+    - "Async task execution"
+    - "Plugin system"
+    - "Monitoring with Prometheus/Grafana"
+    - "Comprehensive testing"
+    - "Security hardening"
+
+# ==========================================
+# CẤU TRÚC THƯ MỤC NÂNG CẤP
+# ==========================================
+directory_structure: |
+  project/
+  ├── docker-compose.yml
+  ├── docker-compose.dev.yml
+  ├── docker-compose.monitoring.yml
+  ├── Makefile
+  ├── .env.example
+  ├── .dockerignore
+  ├── README.md
+  │
+  ├── llms-os/                    # Main CLI Application
+  │   ├── Dockerfile
+  │   ├── Dockerfile.dev
+  │   ├── requirements.txt
+  │   ├── requirements.dev.txt
+  │   └── src/
+  │       ├── LLMs_OS/
+  │       │   ├── __init__.py
+  │       │   ├── registry.py
+  │       │   ├── core.py
+  │       │   ├── async_core.py     # NEW: Async support
+  │       │   ├── cli.py
+  │       │   ├── exceptions.py     # NEW: Custom exceptions
+  │       │   ├── plugins.py        # NEW: Plugin system
+  │       │   ├── validators.py     # NEW: Input validation
+  │       │   ├── monitoring.py     # NEW: Metrics collection
+  │       │   └── actions/
+  │       │       ├── __init__.py
+  │       │       ├── print_message.py
+  │       │       ├── chat_completion.py
+  │       │       ├── http_request.py      # NEW
+  │       │       ├── file_operations.py   # NEW
+  │       │       └── data_transform.py    # NEW
+  │       ├── tests/                # NEW: Testing
+  │       │   ├── __init__.py
+  │       │   ├── test_core.py
+  │       │   ├── test_actions.py
+  │       │   └── test_integration.py
+  │       └── setup.py
+  │
+  ├── mock-api/                    # NEW: Mock OpenRouter API
+  │   ├── Dockerfile
+  │   ├── requirements.txt
+  │   └── app.py
+  │
+  ├── monitoring/                  # NEW: Monitoring configs
+  │   ├── prometheus.yml
+  │   ├── grafana/
+  │   │   └── dashboards/
+  │   │       └── llms-os.json
+  │   └── alerts.yml
+  │
+  ├── workflows/                   # Workflow examples
+  │   ├── test_basic.yaml
+  │   ├── test_advanced.yaml
+  │   └── production/
+  │       └── data_pipeline.yaml
+  │
+  └── scripts/                     # Utility scripts
+      ├── deploy.sh
+      ├── test.sh
+      └── generate_project.py
+
+# ==========================================
+# DOCKER CONFIGURATIONS
+# ==========================================
+docker:
+  
+  # Main Dockerfile - Production Optimized
+  dockerfile_main: |
+    # Multi-stage build for minimal image size
+    FROM python:3.12-alpine3.19 AS builder
+    
+    # Build dependencies
+    RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev python3-dev
+    
+    WORKDIR /build
+    COPY requirements.txt .
+    RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+    
+    # Runtime stage
+    FROM python:3.12-alpine3.19
+    
+    LABEL maintainer="llms-os@example.com" \
+          version="2.0.0" \
+          description="Enhanced LLMs_OS with monitoring"
+    
+    # Install runtime dependencies
+    RUN apk add --no-cache libffi openssl curl && \
+        adduser -D -u 1000 appuser
+    
+    WORKDIR /app
+    
+    # Copy wheels and install
+    COPY --from=builder /build/wheels /wheels
+    RUN pip install --no-cache /wheels/*
+    
+    # Copy application
+    COPY --chown=appuser:appuser ./src/ /app/
+    RUN pip install --no-cache-dir -e /app
+    
+    # Security: Run as non-root
+    USER appuser
+    
+    # Health check
+    HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+        CMD python -c "import LLMs_OS; print('healthy')" || exit 1
+    
+    ENTRYPOINT ["llms-os"]
+    CMD ["--help"]
+
+  # Development Dockerfile with hot reload
+  dockerfile_dev: |
+    FROM python:3.12-slim
+    
+    WORKDIR /app
+    
+    RUN apt-get update && apt-get install -y \
+        gcc \
+        git \
+        vim \
+        curl \
+        && rm -rf /var/lib/apt/lists/*
+    
+    COPY requirements.dev.txt .
+    RUN pip install --no-cache-dir -r requirements.dev.txt
+    
+    # Install development tools
+    RUN pip install --no-cache-dir \
+        ipython \
+        ipdb \
+        black \
+        flake8 \
+        mypy \
+        pytest \
+        pytest-cov \
+        pytest-asyncio \
+        watchdog
+    
+    COPY ./src/ /app/
+    RUN pip install -e /app
+    
+    # Enable hot reload
+    ENV PYTHONUNBUFFERED=1
+    ENV WATCHDOG_ENABLED=1
+    
+    CMD ["watchmedo", "auto-restart", "--patterns=*.py", "--recursive", "--", "llms-os", "--dev"]
+
+  # Mock API Dockerfile
+  dockerfile_mock_api: |
+    FROM python:3.11-slim
+    
+    WORKDIR /app
+    
+    RUN pip install --no-cache-dir \
+        Flask==3.0.0 \
+        Flask-CORS==4.0.0 \
+        requests==2.31.0 \
+        redis==5.0.1 \
+        prometheus-client==0.19.0
+    
+    COPY app.py .
+    
+    EXPOSE 8000
+    
+    # Health endpoint
+    HEALTHCHECK --interval=10s --timeout=3s \
+        CMD curl -f http://localhost:8000/health || exit 1
+    
+    CMD ["python", "-u", "app.py"]
+
+# ==========================================
+# ENHANCED SOURCE CODE
+# ==========================================
+source_files:
+  
+  # src/LLMs_OS/__init__.py
+  llms_os_init: |
+    """LLMs_OS - Enhanced Workflow Automation System"""
+    __version__ = "2.0.0"
+    __author__ = "LLMs_OS Team"
+    
+    from .core import execute_yaml
+    from .async_core import execute_yaml_async
+    from .cli import main
+    from .registry import register, get_action, list_actions
+    
+    __all__ = [
+        'execute_yaml',
+        'execute_yaml_async',
+        'main',
+        'register',
+        'get_action',
+        'list_actions'
+    ]
+
+  # src/LLMs_OS/exceptions.py - NEW
+  exceptions: |
+    """Custom exceptions for LLMs_OS"""
+    
+    class LLMsOSError(Exception):
+        """Base exception for all LLMs_OS errors"""
+        pass
+    
+    class ActionNotFoundError(LLMsOSError):
+        """Raised when an action is not found in registry"""
+        pass
+    
+    class WorkflowExecutionError(LLMsOSError):
+        """Raised when workflow execution fails"""
+        pass
+    
+    class ValidationError(LLMsOSError):
+        """Raised when input validation fails"""
+        pass
+    
+    class APIError(LLMsOSError):
+        """Raised when API calls fail"""
+        def __init__(self, message, status_code=None, response=None):
+            super().__init__(message)
+            self.status_code = status_code
+            self.response = response
+
+  # src/LLMs_OS/validators.py - NEW
+  validators: |
+    """Input validation and sanitization"""
+    import re
+    from typing import Any, Dict, List
+    from .exceptions import ValidationError
+    
+    class TaskValidator:
+        """Validate task configurations"""
+        
+        REQUIRED_FIELDS = ['action']
+        VALID_ACTIONS = None  # Populated from registry
+        
+        @classmethod
+        def validate(cls, task: Dict[str, Any]) -> bool:
+            """Validate a task dictionary"""
+            # Check required fields
+            for field in cls.REQUIRED_FIELDS:
+                if field not in task:
+                    raise ValidationError(f"Missing required field: {field}")
+            
+            # Validate action exists
+            action = task.get('action')
+            if cls.VALID_ACTIONS and action not in cls.VALID_ACTIONS:
+                raise ValidationError(f"Unknown action: {action}")
+            
+            # Sanitize string inputs
+            for key, value in task.items():
+                if isinstance(value, str):
+                    task[key] = cls.sanitize_string(value)
+            
+            return True
+        
+        @staticmethod
+        def sanitize_string(value: str) -> str:
+            """Remove potentially dangerous characters"""
+            # Remove null bytes
+            value = value.replace('\0', '')
+            # Limit length
+            return value[:10000]
+    
+    class WorkflowValidator:
+        """Validate entire workflow"""
+        
+        @staticmethod
+        def validate(workflow: Dict[str, Any]) -> bool:
+            """Validate workflow structure"""
+            if 'tasks' not in workflow:
+                raise ValidationError("Workflow must contain 'tasks' field")
+            
+            tasks = workflow.get('tasks', [])
+            if not isinstance(tasks, list):
+                raise ValidationError("Tasks must be a list")
+            
+            for idx, task in enumerate(tasks):
+                try:
+                    TaskValidator.validate(task)
+                except ValidationError as e:
+                    raise ValidationError(f"Task {idx + 1}: {e}")
+            
+            return True
+
+  # src/LLMs_OS/monitoring.py - NEW
+  monitoring: |
+    """Metrics and monitoring for LLMs_OS"""
+    import time
+    import functools
+    from typing import Dict, Any
+    from prometheus_client import Counter, Histogram, Gauge, generate_latest
+    
+    # Metrics
+    task_counter = Counter('llms_os_tasks_total', 'Total tasks executed', ['action', 'status'])
+    task_duration = Histogram('llms_os_task_duration_seconds', 'Task execution time', ['action'])
+    active_workflows = Gauge('llms_os_active_workflows', 'Currently running workflows')
+    api_calls = Counter('llms_os_api_calls_total', 'API calls made', ['endpoint', 'status'])
+    
+    class MetricsCollector:
+        """Collect and expose metrics"""
+        
+        @staticmethod
+        def track_task(action: str):
+            """Decorator to track task execution"""
+            def decorator(func):
+                @functools.wraps(func)
+                def wrapper(*args, **kwargs):
+                    start_time = time.time()
+                    try:
+                        result = func(*args, **kwargs)
+                        task_counter.labels(action=action, status='success').inc()
+                        return result
+                    except Exception as e:
+                        task_counter.labels(action=action, status='error').inc()
+                        raise
+                    finally:
+                        duration = time.time() - start_time
+                        task_duration.labels(action=action).observe(duration)
+                return wrapper
+            return decorator
+        
+        @staticmethod
+        def track_workflow():
+            """Context manager for workflow tracking"""
+            class WorkflowTracker:
+                def __enter__(self):
+                    active_workflows.inc()
+                    return self
+                
+                def __exit__(self, exc_type, exc_val, exc_tb):
+                    active_workflows.dec()
+            
+            return WorkflowTracker()
+        
+        @staticmethod
+        def get_metrics():
+            """Export metrics in Prometheus format"""
+            return generate_latest()
+
+  # src/LLMs_OS/async_core.py - NEW
+  async_core: |
+    """Asynchronous execution engine for LLMs_OS"""
+    import asyncio
+    import aiohttp
+    import yaml
+    from typing import Dict, Any, List
+    from concurrent.futures import ThreadPoolExecutor
+    from .exceptions import WorkflowExecutionError
+    from .validators import WorkflowValidator
+    from .monitoring import MetricsCollector
+    from .registry import get_action
+    
+    class AsyncExecutor:
+        """Execute workflows asynchronously"""
+        
+        def __init__(self, max_workers: int = 10):
+            self.executor = ThreadPoolExecutor(max_workers=max_workers)
+            self.session = None
+        
+        async def __aenter__(self):
+            self.session = aiohttp.ClientSession()
+            return self
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            await self.session.close()
+            self.executor.shutdown(wait=True)
+        
+        async def execute_task(self, task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+            """Execute a single task asynchronously"""
+            action = task.get('action')
+            action_func = get_action(action)
+            
+            if not action_func:
+                raise WorkflowExecutionError(f"Action not found: {action}")
+            
+            # Check if action is async
+            if asyncio.iscoroutinefunction(action_func):
+                result = await action_func(task, context, session=self.session)
+            else:
+                # Run sync function in thread pool
+                result = await asyncio.get_event_loop().run_in_executor(
+                    self.executor, action_func, task, context
+                )
+            
+            return result or {}
+        
+        async def execute_parallel_tasks(self, tasks: List[Dict], context: Dict) -> Dict:
+            """Execute multiple tasks in parallel"""
+            tasks_to_run = []
+            
+            for task in tasks:
+                if task.get('parallel', False):
+                    tasks_to_run.append(self.execute_task(task, context))
+                else:
+                    # Execute sequential task and wait
+                    if tasks_to_run:
+                        results = await asyncio.gather(*tasks_to_run, return_exceptions=True)
+                        tasks_to_run = []
+                    
+                    result = await self.execute_task(task, context)
+                    context.update(result)
+            
+            # Execute remaining parallel tasks
+            if tasks_to_run:
+                results = await asyncio.gather(*tasks_to_run, return_exceptions=True)
+            
+            return context
+    
+    async def execute_yaml_async(file_path: str) -> None:
+        """Execute workflow from YAML file asynchronously"""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            workflow = yaml.safe_load(f)
+        
+        # Validate workflow
+        WorkflowValidator.validate(workflow)
+        
+        # Execute with metrics tracking
+        with MetricsCollector.track_workflow():
+            async with AsyncExecutor() as executor:
+                context = {}
+                tasks = workflow.get('tasks', [])
+                await executor.execute_parallel_tasks(tasks, context)
+
+  # src/LLMs_OS/plugins.py - NEW
+  plugins: |
+    """Plugin system for extending LLMs_OS"""
+    import importlib
+    import inspect
+    from abc import ABC, abstractmethod
+    from pathlib import Path
+    from typing import Dict, Any, List
+    
+    class PluginInterface(ABC):
+        """Base interface for all plugins"""
+        
+        @property
+        @abstractmethod
+        def name(self) -> str:
+            """Plugin name"""
+            pass
+        
+        @property
+        @abstractmethod
+        def version(self) -> str:
+            """Plugin version"""
+            pass
+        
+        @abstractmethod
+        def execute(self, task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+            """Execute plugin logic"""
+            pass
+        
+        @abstractmethod
+        def validate(self, task: Dict[str, Any]) -> bool:
+            """Validate task configuration"""
+            pass
+    
+    class PluginManager:
+        """Manage plugin discovery and loading"""
+        
+        def __init__(self):
+            self.plugins: Dict[str, PluginInterface] = {}
+            self.plugin_dir = Path(__file__).parent / 'plugins'
+        
+        def discover_plugins(self) -> List[str]:
+            """Auto-discover plugins in plugin directory"""
+            discovered = []
+            
+            if not self.plugin_dir.exists():
+                self.plugin_dir.mkdir(parents=True, exist_ok=True)
+                return discovered
+            
+            for plugin_file in self.plugin_dir.glob('*.py'):
+                if plugin_file.name.startswith('_'):
+                    continue
+                
+                module_name = f"LLMs_OS.plugins.{plugin_file.stem}"
+                
+                try:
+                    module = importlib.import_module(module_name)
+                    
+                    # Find plugin classes
+                    for name, obj in inspect.getmembers(module):
+                        if (inspect.isclass(obj) and 
+                            issubclass(obj, PluginInterface) and 
+                            obj != PluginInterface):
+                            
+                            plugin_instance = obj()
+                            self.plugins[plugin_instance.name] = plugin_instance
+                            discovered.append(plugin_instance.name)
+                            
+                except Exception as e:
+                    print(f"Failed to load plugin {module_name}: {e}")
+            
+            return discovered
+        
+        def get_plugin(self, name: str) -> PluginInterface:
+            """Get plugin by name"""
+            return self.plugins.get(name)
+        
+        def list_plugins(self) -> List[str]:
+            """List all loaded plugins"""
+            return list(self.plugins.keys())
+    
+    # Global plugin manager instance
+    plugin_manager = PluginManager()
+
+  # src/LLMs_OS/actions/http_request.py - NEW
+  http_request_action: |
+    """HTTP request action for API calls"""
+    import requests
+    import json
+    from typing import Dict, Any
+    from LLMs_OS.registry import register
+    from LLMs_OS.core import render
+    from LLMs_OS.monitoring import MetricsCollector, api_calls
+    from LLMs_OS.exceptions import APIError
+    
+    @register('http_request')
+    @MetricsCollector.track_task('http_request')
+    def http_request_action(task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Make HTTP request to any API"""
+        
+        # Get parameters
+        url = render(task.get('url', ''), context)
+        method = task.get('method', 'GET').upper()
+        headers = task.get('headers', {})
+        body = task.get('body')
+        timeout = task.get('timeout', 30)
+        
+        # Render headers and body
+        rendered_headers = {k: render(v, context) for k, v in headers.items()}
+        if body:
+            if isinstance(body, dict):
+                body = json.dumps({k: render(v, context) for k, v in body.items()})
+            else:
+                body = render(body, context)
+        
+        try:
+            # Make request
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=rendered_headers,
+                data=body,
+                timeout=timeout
+            )
+            
+            # Track metrics
+            api_calls.labels(
+                endpoint=url.split('?')[0],
+                status=response.status_code
+            ).inc()
+            
+            # Check response
+            if not response.ok and not task.get('ignore_errors', False):
+                raise APIError(
+                    f"HTTP {method} failed: {response.status_code}",
+                    status_code=response.status_code,
+                    response=response.text
+                )
+            
+            # Parse response
+            result = {
+                'status_code': response.status_code,
+                'headers': dict(response.headers),
+                'text': response.text
+            }
+            
+            # Try to parse JSON
+            try:
+                result['json'] = response.json()
+            except:
+                pass
+            
+            # Save to context
+            if task.get('save_as'):
+                return {task['save_as']: result}
+            
+            return result
+            
+        except requests.RequestException as e:
+            api_calls.labels(endpoint=url.split('?')[0], status='error').inc()
+            if not task.get('ignore_errors', False):
+                raise APIError(f"Request failed: {e}")
+            return {}
+
+  # Mock API Server - Enhanced
+  mock_api_app: |
+    """Enhanced Mock OpenRouter API Server"""
+    from flask import Flask, request, jsonify, Response
+    from flask_cors import CORS
+    import os
+    import time
+    import random
+    import hashlib
+    import json
+    from datetime import datetime
+    from prometheus_client import Counter, Histogram, generate_latest
+    
+    app = Flask(__name__)
+    CORS(app)
+    
+    # Configuration
+    SIMULATED_API_KEY = os.getenv("SIMULATED_API_KEY", "sk-simulated-key")
+    ENABLE_METRICS = os.getenv("ENABLE_METRICS", "true").lower() == "true"
+    
+    # Metrics
+    if ENABLE_METRICS:
+        request_count = Counter('mock_api_requests_total', 'Total requests', ['endpoint', 'status'])
+        request_duration = Histogram('mock_api_request_duration_seconds', 'Request duration', ['endpoint'])
+    
+    # Response templates
+    RESPONSE_TEMPLATES = {
+        "haiku": [
+            "Containers drift by,\nIsolated yet connected,\nDocker's symphony.",
+            "Code flows like water,\nThrough pipelines and registries,\nDevOps harmony.",
+            "Microservices dance,\nOrchestrated by the cloud,\nScaling endlessly."
+        ],
+        "test": [
+            "✅ Test successful! Mock API is working correctly.",
+            "🎯 Mock API responding normally. All systems operational.",
+            "🚀 Test passed! Ready for workflow execution."
+        ],
+        "error": [
+            "❌ Simulated error for testing error handling.",
+            "⚠️ Warning: This is a test error response.",
+            "🔥 Critical: Simulated failure scenario."
+        ]
+    }
+    
+    def track_request(endpoint):
+        """Decorator to track requests"""
+        def decorator(func):
+            def wrapper(*args, **kwargs):
+                start = time.time()
+                try:
+                    result = func(*args, **kwargs)
+                    if ENABLE_METRICS:
+                        request_count.labels(endpoint=endpoint, status='success').inc()
+                    return result
+                except Exception as e:
+                    if ENABLE_METRICS:
+                        request_count.labels(endpoint=endpoint, status='error').inc()
+                    raise
+                finally:
+                    if ENABLE_METRICS:
+                        duration = time.time() - start
+                        request_duration.labels(endpoint=endpoint).observe(duration)
+            wrapper.__name__ = func.__name__
+            return wrapper
+        return decorator
+    
+    @app.route("/health", methods=["GET"])
+    def health():
+        """Health check endpoint"""
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "version": "2.0.0"
+        }), 200
+    
+    @app.route("/metrics", methods=["GET"])
+    def metrics():
+        """Prometheus metrics endpoint"""
+        if ENABLE_METRICS:
+            return Response(generate_latest(), mimetype='text/plain')
+        return "Metrics disabled", 404
+    
+    @app.route("/api/v1/chat/completions", methods=["POST"])
+    @track_request("chat_completions")
+    def chat_completions():
+        """Mock OpenRouter chat completions endpoint"""
+        
+        # Validate API key
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith(f"Bearer {SIMULATED_API_KEY}"):
+            return jsonify({"error": "Invalid API key"}), 401
+        
+        # Parse request
+        data = request.json
+        model = data.get("model", "openai/gpt-3.5-turbo")
+        messages = data.get("messages", [])
+        temperature = data.get("temperature", 0.7)
+        max_tokens = data.get("max_tokens", 150)
+        stream = data.get("stream", False)
+        
+        # Extract user prompt
+        user_prompt = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                user_prompt = msg.get("content", "")
+                break
+        
+        # Generate response based on prompt
+        response_text = generate_response(user_prompt, model, temperature)
+        
+        # Simulate processing delay
+        time.sleep(random.uniform(0.1, 0.5))
+        
+        # Create response
+        completion_id = f"cmpl-{hashlib.md5(f'{time.time()}'.encode()).hexdigest()[:8]}"
+        
+        if stream:
+            # SSE streaming response
+            def generate():
+                chunks = response_text.split(' ')
+                for chunk in chunks:
+                    data = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk + " "},
+                            "finish_reason": None
+                        }]
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                    time.sleep(0.05)
+                
+                # Final chunk
+                data["choices"][0]["delta"] = {}
+                data["choices"][0]["finish_reason"] = "stop"
+                yield f"data: {json.dumps(data)}\n\n"
+                yield "data: [DONE]\n\n"
+            
+            return Response(generate(), mimetype='text/event-stream')
+        
+        # Normal response
+        return jsonify({
+            "id": completion_id,
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": response_text
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": len(user_prompt.split()),
+                "completion_tokens": len(response_text.split()),
+                "total_tokens": len(user_prompt.split()) + len(response_text.split())
+            }
+        })
+    
+    def generate_response(prompt: str, model: str, temperature: float) -> str:
+        """Generate mock response based on prompt"""
+        prompt_lower = prompt.lower()
+        
+        # Check for specific keywords
+        if "haiku" in prompt_lower:
+            responses = RESPONSE_TEMPLATES["haiku"]
+        elif "test" in prompt_lower:
+            responses = RESPONSE_TEMPLATES["test"]
+        elif "error" in prompt_lower or "fail" in prompt_lower:
+            responses = RESPONSE_TEMPLATES["error"]
+        else:
+            # Generate contextual response
+            return f"Mock response from {model}: Received prompt '{prompt[:50]}...' | Temperature: {temperature:.2f} | This is a simulated response for testing purposes."
+        
+        # Return random response from template
+        return random.choice(responses)
+    
+    @app.route("/api/v1/models", methods=["GET"])
+    @track_request("list_models")
+    def list_models():
+        """List available models"""
+        return jsonify({
+            "object": "list",
+            "data": [
+                {"id": "openai/gpt-3.5-turbo", "object": "model", "created": 1677649963, "owned_by": "openai"},
+                {"id": "openai/gpt-4", "object": "model", "created": 1687882411, "owned_by": "openai"},
+                {"id": "anthropic/claude-2", "object": "model", "created": 1689095500, "owned_by": "anthropic"},
+                {"id": "google/palm-2", "object": "model", "created": 1683756000, "owned_by": "google"},
+                {"id": "meta-llama/llama-2-70b", "object": "model", "created": 1689638400, "owned_by": "meta"}
+            ]
+        })
+    
+    if __name__ == "__main__":
+        port = int(os.getenv("PORT", 8000))
+        debug = os.getenv("DEBUG", "false").lower() == "true"
+        
+        print(f"🚀 Mock API Server starting on port {port}")
+        print(f"🔑 Using API key: {SIMULATED_API_KEY}")
+        print(f"📊 Metrics enabled: {ENABLE_METRICS}")
+        
+        app.run(host="0.0.0.0", port=port, debug=debug)
+
+# ==========================================
+# DOCKER COMPOSE FILES
+# ==========================================
+docker_compose:
+  
+  # docker-compose.yml - Main orchestration
+  main: |
+    version: '3.8'
+    
+    services:
+      # Mock OpenRouter API
+      mock-api:
+        build:
+          context: ./mock-api
+          dockerfile: Dockerfile
+        image: llms-os-mock-api:latest
+        container_name: llms-mock-api
+        ports:
+          - "8000:8000"
+        environment:
+          - SIMULATED_API_KEY=${MOCK_API_KEY:-sk-simulated-key}
+          - ENABLE_METRICS=true
+          - DEBUG=false
+        networks:
+          - llms-network
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 10s
+        restart: unless-stopped
+      
+      # Main LLMs_OS CLI
+      llms-os:
+        build:
+          context: ./llms-os
+          dockerfile: Dockerfile
+        image: llms-os:latest
+        container_name: llms-os-cli
+        depends_on:
+          mock-api:
+            condition: service_healthy
+        environment:
+          - OPENROUTER_API_URL=http://mock-api:8000/api/v1
+          - OPENROUTER_API_KEY=${MOCK_API_KEY:-sk-simulated-key}
+          - LOG_LEVEL=${LOG_LEVEL:-INFO}
+          - PYTHONUNBUFFERED=1
+        volumes:
+          - ./workflows:/app/workflows:ro
+          - ./output:/app/output
+          - ./logs:/app/logs
+        networks:
+          - llms-network
+        command: workflows/test_basic.yaml
+        restart: no
+      
+      # Redis for caching (optional)
+      redis:
+        image: redis:7-alpine
+        container_name: llms-redis
+        ports:
+          - "6379:6379"
+        networks:
+          - llms-network
+        volumes:
+          - redis-data:/data
+        command: redis-server --appendonly yes
+        profiles:
+          - full
+        restart: unless-stopped
+    
+    networks:
+      llms-network:
+        driver: bridge
+        ipam:
+          config:
+            - subnet: 172.28.0.0/16
+    
+    volumes:
+      redis-data:
+      logs:
+      output:
+
+  # docker-compose.dev.yml - Development environment
+  dev: |
+    version: '3.8'
+    
+    services:
+      llms-os-dev:
+        build:
+          context: ./llms-os
+          dockerfile: Dockerfile.dev
+        image: llms-os:dev
+        container_name: llms-os-dev
+        environment:
+          - OPENROUTER_API_URL=http://mock-api:8000/api/v1
+          - OPENROUTER_API_KEY=sk-simulated-key
+          - LOG_LEVEL=DEBUG
+          - PYTHONUNBUFFERED=1
+          - WATCHDOG_ENABLED=1
+        volumes:
+          - ./llms-os/src:/app:rw
+          - ./workflows:/app/workflows:ro
+          - ./output:/app/output
+        networks:
+          - llms-network
+        command: watchmedo auto-restart --patterns="*.py" --recursive -- python -m LLMs_OS.cli workflows/test_basic.yaml
+        stdin_open: true
+        tty: true
+
+  # docker-compose.monitoring.yml - Monitoring stack
+  monitoring: |
+    version: '3.8'
+    
+    services:
+      # Prometheus for metrics collection
+      prometheus:
+        image: prom/prometheus:latest
+        container_name: llms-prometheus
+        ports:
+          - "9090:9090"
+        volumes:
+          - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+          - prometheus-data:/prometheus
+        command:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
+          - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+          - '--web.console.templates=/usr/share/prometheus/consoles'
+        networks:
+          - llms-network
+        restart: unless-stopped
+      
+      # Grafana for visualization
+      grafana:
+        image: grafana/grafana:latest
+        container_name: llms-grafana
+        ports:
+          - "3000:3000"
+        environment:
+          - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+          - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+          - GF_INSTALL_PLUGINS=redis-datasource
+        volumes:
+          - grafana-data:/var/lib/grafana
+          - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+        networks:
+          - llms-network
+        depends_on:
+          - prometheus
+        restart: unless-stopped
+      
+      # Node Exporter for system metrics
+      node-exporter:
+        image: prom/node-exporter:latest
+        container_name: llms-node-exporter
+        ports:
+          - "9100:9100"
+        volumes:
+          - /proc:/host/proc:ro
+          - /sys:/host/sys:ro
+          - /:/rootfs:ro
+        command:
+          - '--path.procfs=/host/proc'
+          - '--path.sysfs=/host/sys'
+          - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+        networks:
+          - llms-network
+        restart: unless-stopped
+    
+    volumes:
+      prometheus-data:
+      grafana-data:
+
+# ==========================================
+# CONFIGURATION FILES
+# ==========================================
+config_files:
+  
+  # Makefile - Build automation
+  makefile: |
+    .PHONY: help build up down test clean dev monitoring logs shell
+    
+    # Default target
+    help:
+    	@echo "LLMs_OS Docker Project - Available Commands:"
+    	@echo ""
+    	@echo "  make build       - Build all Docker images"
+    	@echo "  make up          - Start all services"
+    	@echo "  make down        - Stop all services"
+    	@echo "  make dev         - Start development environment"
+    	@echo "  make test        - Run tests"
+    	@echo "  make monitoring  - Start monitoring stack"
+    	@echo "  make logs        - Show logs"
+    	@echo "  make shell       - Open shell in llms-os container"
+    	@echo "  make clean       - Clean up everything"
+    	@echo ""
+    
+    # Build Docker images
+    build:
+    	@echo "🏗️ Building Docker images..."
+    	docker-compose build
+    	@echo "✅ Build complete!"
+    
+    # Start services
+    up: build
+    	@echo "🚀 Starting services..."
+    	docker-compose up -d
+    	@echo "✅ Services started!"
+    	@echo ""
+    	@echo "📍 Services available at:"
+    	@echo "  - Mock API: http://localhost:8000"
+    	@echo "  - API Health: http://localhost:8000/health"
+    	@echo "  - API Metrics: http://localhost:8000/metrics"
+    	@echo ""
+    
+    # Stop services
+    down:
+    	@echo "🛑 Stopping services..."
+    	docker-compose down
+    	@echo "✅ Services stopped!"
+    
+    # Development mode
+    dev:
+    	@echo "🔧 Starting development environment..."
+    	docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+    
+    # Run tests
+    test:
+    	@echo "🧪 Running tests..."
+    	docker-compose exec llms-os pytest -v /app/tests/
+    	@echo "✅ Tests complete!"
+    
+    # Start monitoring
+    monitoring:
+    	@echo "📊 Starting monitoring stack..."
+    	docker-compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+    	@echo "✅ Monitoring started!"
+    	@echo ""
+    	@echo "📍 Monitoring available at:"
+    	@echo "  - Prometheus: http://localhost:9090"
+    	@echo "  - Grafana: http://localhost:3000 (admin/admin)"
+    	@echo ""
+    
+    # Show logs
+    logs:
+    	docker-compose logs -f --tail=100
+    
+    # Open shell
+    shell:
+    	docker-compose exec llms-os /bin/sh
+    
+    # Clean everything
+    clean:
+    	@echo "🧹 Cleaning up..."
+    	docker-compose down -v
+    	docker system prune -f
+    	rm -rf output/* logs/*
+    	@echo "✅ Cleanup complete!"
+
+  # requirements.txt - Python dependencies
+  requirements: |
+    # Core dependencies
+    pyyaml==6.0.1
+    jinja2==3.1.2
+    requests==2.31.0
+    
+    # Async support
+    aiohttp==3.9.1
+    asyncio==3.4.3
+    
+    # API clients
+    openai==0.28.0
+    anthropic==0.8.1
+    
+    # Monitoring
+    prometheus-client==0.19.0
+    
+    # Utilities
+    python-dotenv==1.0.0
+    colorama==0.4.6
+    rich==13.7.0
+    tenacity==8.2.3
+    
+    # Validation
+    pydantic==2.5.3
+    jsonschema==4.20.0
+
+  # requirements.dev.txt - Development dependencies
+  requirements_dev: |
+    # Include base requirements
+    -r requirements.txt
+    
+    # Development tools
+    ipython==8.19.0
+    ipdb==0.13.13
+    
+    # Code quality
+    black==23.12.1
+    flake8==7.0.0
+    mypy==1.8.0
+    pylint==3.0.3
+    
+    # Testing
+    pytest==7.4.4
+    pytest-cov==4.1.0
+    pytest-asyncio==0.23.3
+    pytest-mock==3.12.0
+    
+    # Hot reload
+    watchdog==3.0.0
+    
+    # Documentation
+    sphinx==7.2.6
+    sphinx-rtd-theme==2.0.0
+
+  # .env.example - Environment variables
+  env_example: |
+    # API Configuration
+    OPENROUTER_API_KEY=sk-or-your-actual-key-here
+    MOCK_API_KEY=sk-simulated-key
+    
+    # Application Settings
+    LOG_LEVEL=INFO
+    WORKFLOW_FILE=test_basic.yaml
+    PYTHONUNBUFFERED=1
+    
+    # Redis Cache (optional)
+    REDIS_URL=redis://redis:6379/0
+    CACHE_TTL=3600
+    CACHE_ENABLED=false
+    
+    # Monitoring
+    ENABLE_METRICS=true
+    GRAFANA_USER=admin
+    GRAFANA_PASSWORD=secure-password-here
+    
+    # Development
+    DEBUG=false
+    WATCHDOG_ENABLED=false
+    HOT_RELOAD=false
+
+  # monitoring/prometheus.yml
+  prometheus_config: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    scrape_configs:
+      # Mock API metrics
+      - job_name: 'mock-api'
+        static_configs:
+          - targets: ['mock-api:8000']
+        metrics_path: '/metrics'
+      
+      # Node exporter
+      - job_name: 'node'
+        static_configs:
+          - targets: ['node-exporter:9100']
+      
+      # Docker metrics
+      - job_name: 'docker'
+        static_configs:
+          - targets: ['172.28.0.1:9323']
+
+  # scripts/generate_project.py
+  generate_project_script: |
+    #!/usr/bin/env python3
+    """Generate complete project from this YAML file"""
+    
+    import yaml
+    import os
+    import sys
+    from pathlib import Path
+    import argparse
+    
+    def create_file(path: Path, content: str):
+        """Create file with content"""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content.strip() + '\n')
+        print(f"✅ Created: {path}")
+    
+    def generate_project(yaml_file: str, output_dir: str = "project"):
+        """Generate entire project from YAML blueprint"""
+        
+        # Load YAML
+        with open(yaml_file, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+        
+        output = Path(output_dir)
+        
+        # Create directory structure
+        dirs = [
+            "llms-os/src/LLMs_OS/actions",
+            "llms-os/src/tests",
+            "mock-api",
+            "monitoring/grafana/dashboards",
+            "workflows/production",
+            "scripts",
+            "output",
+            "logs"
+        ]
+        
+        for dir_path in dirs:
+            (output / dir_path).mkdir(parents=True, exist_ok=True)
+        
+        # Create Docker files
+        docker_configs = data.get('docker', {})
+        create_file(output / "llms-os/Dockerfile", docker_configs.get('dockerfile_main', ''))
+        create_file(output / "llms-os/Dockerfile.dev", docker_configs.get('dockerfile_dev', ''))
+        create_file(output / "mock-api/Dockerfile", docker_configs.get('dockerfile_mock_api', ''))
+        
+        # Create source files
+        source_files = data.get('source_files', {})
+        file_mapping = {
+            'llms_os_init': 'llms-os/src/LLMs_OS/__init__.py',
+            'exceptions': 'llms-os/src/LLMs_OS/exceptions.py',
+            'validators': 'llms-os/src/LLMs_OS/validators.py',
+            'monitoring': 'llms-os/src/LLMs_OS/monitoring.py',
+            'async_core': 'llms-os/src/LLMs_OS/async_core.py',
+            'plugins': 'llms-os/src/LLMs_OS/plugins.py',
+            'http_request_action': 'llms-os/src/LLMs_OS/actions/http_request.py',
+            'mock_api_app': 'mock-api/app.py'
+        }
+        
+        for key, path in file_mapping.items():
+            if key in source_files:
+                create_file(output / path, source_files[key])
+        
+        # Create Docker Compose files
+        compose_configs = data.get('docker_compose', {})
+        create_file(output / "docker-compose.yml", compose_configs.get('main', ''))
+        create_file(output / "docker-compose.dev.yml", compose_configs.get('dev', ''))
+        create_file(output / "docker-compose.monitoring.yml", compose_configs.get('monitoring', ''))
+        
+        # Create configuration files
+        config_files = data.get('config_files', {})
+        config_mapping = {
+            'makefile': 'Makefile',
+            'requirements': 'llms-os/requirements.txt',
+            'requirements_dev': 'llms-os/requirements.dev.txt',
+            'env_example': '.env.example',
+            'prometheus_config': 'monitoring/prometheus.yml'
+        }
+        
+        for key, path in config_mapping.items():
+            if key in config_files:
+                create_file(output / path, config_files[key])
+        
+        # Create this script itself
+        create_file(output / "scripts/generate_project.py", config_files.get('generate_project_script', ''))
+        
+        print(f"\n✅ Project generated successfully in '{output_dir}'!")
+        print("\n📖 Quick Start:")
+        print(f"  cd {output_dir}")
+        print("  make build")
+        print("  make up")
+        print("  make test")
+    
+    if __name__ == "__main__":
+        parser = argparse.ArgumentParser(description="Generate LLMs_OS project from YAML")
+        parser.add_argument("yaml_file", help="Path to YAML blueprint file")
+        parser.add_argument("-o", "--output", default="project", help="Output directory")
+        
+        args = parser.parse_args()
+        
+        if not os.path.exists(args.yaml_file):
+            print(f"❌ File not found: {args.yaml_file}")
+            sys.exit(1)
+        
+        generate_project(args.yaml_file, args.output)
+
+# ==========================================
+# TEST WORKFLOWS
+# ==========================================
+test_workflows:
+  
+  # workflows/test_basic.yaml
+  test_basic: |
+    metadata:
+      title: "🧪 Basic Test Workflow"
+      description: "Test basic LLMs_OS functionality"
+      version: "1.0.0"
+    
+    tasks:
+      - action: print_message
+        message: "🚀 Starting basic test workflow..."
+        style: info
+      
+      - action: print_message
+        message: "Environment: {{ LOG_LEVEL | default('INFO') }}"
+        style: debug
+      
+      - action: http_request
+        url: "http://mock-api:8000/health"
+        method: GET
+        save_as: health_check
+      
+      - action: print_message
+        message: "Health check status: {{ health_check.status_code }}"
+        style: success
+      
+      - action: chat_completion
+        model: "openai/gpt-3.5-turbo"
+        messages:
+          - role: system
+            content: "You are a helpful assistant."
+          - role: user
+            content: "Write a haiku about testing."
+        save_as: haiku_result
+      
+      - action: print_message
+        message: "AI Response: {{ haiku_result }}"
+        style: info
+      
+      - action: print_message
+        message: "✅ Basic test completed successfully!"
+        style: success
+
+  # workflows/test_advanced.yaml
+  test_advanced: |
+    metadata:
+      title: "🔬 Advanced Test Workflow"
+      description: "Test advanced features including parallel execution"
+      version: "1.0.0"
+    
+    tasks:
+      # Sequential setup
+      - action: print_message
+        message: "🔬 Starting advanced test workflow..."
+        style: info
+      
+      # Parallel API calls
+      - action: http_request
+        url: "http://mock-api:8000/api/v1/models"
+        method: GET
+        parallel: true
+        save_as: models_list
+      
+      - action: chat_completion
+        model: "openai/gpt-4"
+        messages:
+          - role: user
+            content: "Explain Docker in one sentence."
+        parallel: true
+        save_as: docker_explanation
+      
+      - action: chat_completion
+        model: "anthropic/claude-2"
+        messages:
+          - role: user
+            content: "What is Kubernetes?"
+        parallel: true
+        save_as: k8s_explanation
+      
+      # Sequential processing of results
+      - action: print_message
+        message: "📊 Parallel tasks completed!"
+        style: success
+      
+      # Error handling test
+      - action: http_request
+        url: "http://mock-api:8000/nonexistent"
+        method: GET
+        ignore_errors: true
+        continue_on_error: true
+        save_as: error_test
+      
+      - action: print_message
+        message: "✅ Advanced test completed!"
+        style: success
+
+# ==========================================
+# COMMANDS & DEPLOYMENT
+# ==========================================
+commands:
+  quick_start: |
+    # 1. Generate project from this YAML
+    python generate_project.py llms-os-docker-project-enhanced.yaml -o my-project
+    
+    # 2. Navigate to project
+    cd my-project
+    
+    # 3. Copy environment file
+    cp .env.example .env
+    
+    # 4. Build and start services
+    make build
+    make up
+    
+    # 5. Run tests
+    make test
+    
+    # 6. Start monitoring (optional)
+    make monitoring
+    
+    # 7. View logs
+    make logs
+
+  production_deployment: |
+    # Build production images
+    docker build -t llms-os:prod -f llms-os/Dockerfile ./llms-os
+    docker build -t llms-os-mock:prod -f mock-api/Dockerfile ./mock-api
+    
+    # Tag for registry
+    docker tag llms-os:prod myregistry.com/llms-os:latest
+    docker tag llms-os-mock:prod myregistry.com/llms-os-mock:latest
+    
+    # Push to registry
+    docker push myregistry.com/llms-os:latest
+    docker push myregistry.com/llms-os-mock:latest
+    
+    # Deploy with Docker Swarm
+    docker stack deploy -c docker-compose.yml llms-os-stack
+    
+    # Or deploy with Kubernetes
+    kubectl apply -f k8s/
+
+# ==========================================
+# PROJECT METADATA
+# ==========================================
+metadata:
+  created: "2024-01-15"
+  author: "LLMs_OS Team"
+  license: "MIT"
+  repository: "https://github.com/llms-os/llms-os-docker"
+  documentation: "https://docs.llms-os.io"
+  support: "support@llms-os.io"
