@@ -1,0 +1,58 @@
+metadata:
+  title: "🎨 Custom Demo Workflow"
+  description: "Demonstrates various actions"
+  version: "1.0.0"
+
+tasks:
+  - action: print_message
+    message: "=== 🎨 Custom Workflow Demo ==="
+    style: success
+  
+  - action: print_message
+    message: "Step 1: Fetching data from API..."
+    style: info
+  
+  - action: http_request
+    url: "http://llms-mock-api:8000/api/v1/models"
+    method: GET
+    save_as: models_data
+  
+  - action: print_message
+    message: "✓ Found {{ models_data.json.data }} models"
+    style: success
+  
+  - action: print_message
+    message: "Step 2: Generating content with AI..."
+    style: info
+  
+  - action: chat_completion
+    model: "openai/gpt-3.5-turbo"
+    messages:
+      - role: user
+        content: "Explain Docker in one sentence."
+    save_as: docker_explanation
+  
+  - action: print_message
+    message: "📝 AI Says: {{ docker_explanation.content }}"
+    style: info
+  
+  - action: print_message
+    message: "Step 3: Writing output to file..."
+    style: info
+  
+  - action: file_write
+    path: "/app/output/demo_result.txt"
+    content: |
+      Demo Workflow Results
+      =====================
+      Timestamp: 2025-10-23
+      AI Explanation: {{ docker_explanation.content }}
+    save_as: file_result
+  
+  - action: print_message
+    message: "✓ File written to: {{ file_result.path }}"
+    style: success
+  
+  - action: print_message
+    message: "=== ✅ Demo Complete! ==="
+    style: success

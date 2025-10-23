@@ -31,7 +31,7 @@ tasks:
     save_as: haiku_result
   
   - action: print_message
-    message: "AI Response: {{ haiku_result }}"
+    message: "AI Response: {{ haiku_result.content }}"
     style: info
   
   - action: print_message

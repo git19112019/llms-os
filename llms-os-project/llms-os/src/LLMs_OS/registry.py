@@ -1,19 +1,20 @@
-"""Action registry for LLMs OS"""
-from typing import Dict, Callable, Any
+"""Action registry for LLMs_OS"""
 
-_actions: Dict[str, Callable] = {}
+_ACTIONS = {}
 
-def register(name: str):
+def register(name):
     """Decorator to register an action"""
-    def decorator(func: Callable) -> Callable:
-        _actions[name] = func
+    def decorator(func):
+        _ACTIONS[name] = func
         return func
     return decorator
 
-def get_action(name: str) -> Callable:
+def get_action(name):
     """Get an action by name"""
-    return _actions.get(name)
+    if name not in _ACTIONS:
+        raise KeyError(f"Action not found: {name}")
+    return _ACTIONS[name]
 
-def list_actions() -> list:
+def list_actions():
     """List all registered actions"""
-    return list(_actions.keys())
+    return list(_ACTIONS.keys())

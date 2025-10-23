@@ -96,8 +96,8 @@ def main():
     
     # Create mock API
     print('🔌 Creating Mock API...')
-    api_files = config.get('mock_api', {})
-    create_file(output_dir / 'mock-api/app.py', api_files.get('app', ''))
+    mock_api_app = source_files.get('mock_api_app', '')
+    create_file(output_dir / 'mock-api/app.py', mock_api_app)
     print()
     
     # Create monitoring configs

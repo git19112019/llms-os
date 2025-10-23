@@ -1,4 +1,4 @@
-"""Built-in actions for LLMs OS"""
+"""Action modules"""
 from . import print_message
 from . import chat_completion
 from . import http_request
