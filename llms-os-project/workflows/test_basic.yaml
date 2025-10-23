@@ -13,7 +13,7 @@ tasks:
     style: debug
   
   - action: http_request
-    url: "http://llms-mock-api:8000/health"
+    url: "http://mock-api:8000/health"
     method: GET
     save_as: health_check
   
@@ -31,7 +31,7 @@ tasks:
     save_as: haiku_result
   
   - action: print_message
-    message: "AI Response: {{ haiku_result.content }}"
+    message: "AI Response: {{ haiku_result }}"
     style: info
   
   - action: print_message
