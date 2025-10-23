@@ -1,7 +1,6 @@
-"""Initialize actions module"""
-# Import all actions to register them
+"""Built-in actions for LLMs OS"""
 from . import print_message
-from . import chat_completion  
+from . import chat_completion
 from . import http_request
 from . import file_operations
 

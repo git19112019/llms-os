@@ -1,26 +1,28 @@
-"""File operations action"""
-from pathlib import Path
-from typing import Dict, Any
-from LLMs_OS.registry import register
-from LLMs_OS.core import render
+"""File operations actions"""
+from ..registry import register
 
 @register('file_read')
-def file_read_action(task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+def file_read_action(task: dict, context: dict) -> dict:
     """Read file content"""
-    file_path = render(task.get('path', ''), context)
-    encoding = task.get('encoding', 'utf-8')
+    path = task.get('path', '')
     
-    content = Path(file_path).read_text(encoding=encoding)
-    return {'content': content, 'path': file_path}
+    try:
+        with open(path, 'r') as f:
+            content = f.read()
+        return {'path': path, 'content': content}
+    except Exception as e:
+        raise Exception(f"Failed to read file {path}: {e}")
 
 @register('file_write')
-def file_write_action(task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+def file_write_action(task: dict, context: dict) -> dict:
     """Write content to file"""
-    file_path = render(task.get('path', ''), context)
-    content = render(task.get('content', ''), context)
-    encoding = task.get('encoding', 'utf-8')
+    path = task.get('path', '')
+    content = task.get('content', '')
+    mode = task.get('mode', 'w')
     
-    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(file_path).write_text(content, encoding=encoding)
-    
-    return {'path': file_path, 'bytes_written': len(content)}
+    try:
+        with open(path, mode) as f:
+            f.write(content)
+        return {'path': path, 'bytes_written': len(content)}
+    except Exception as e:
+        raise Exception(f"Failed to write file {path}: {e}")

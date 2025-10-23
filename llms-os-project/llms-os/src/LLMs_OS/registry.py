@@ -1,24 +1,19 @@
-"""Action registry for LLMs_OS"""
-from typing import Dict, Callable, Any, List
+"""Action registry for LLMs OS"""
+from typing import Dict, Callable, Any
 
-# Global registry
-_ACTION_REGISTRY: Dict[str, Callable] = {}
+_actions: Dict[str, Callable] = {}
 
-def register(action_name: str):
+def register(name: str):
     """Decorator to register an action"""
-    def decorator(func: Callable):
-        _ACTION_REGISTRY[action_name] = func
+    def decorator(func: Callable) -> Callable:
+        _actions[name] = func
         return func
     return decorator
 
-def get_action(action_name: str) -> Callable:
-    """Get action function by name"""
-    return _ACTION_REGISTRY.get(action_name)
+def get_action(name: str) -> Callable:
+    """Get an action by name"""
+    return _actions.get(name)
 
-def list_actions() -> List[str]:
+def list_actions() -> list:
     """List all registered actions"""
-    return list(_ACTION_REGISTRY.keys())
-
-def action_exists(action_name: str) -> bool:
-    """Check if action exists"""
-    return action_name in _ACTION_REGISTRY
+    return list(_actions.keys())

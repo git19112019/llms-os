@@ -1,45 +1,40 @@
-"""Chat completion action using OpenRouter API"""
+"""Chat completion action"""
 import os
 import requests
-from typing import Dict, Any
-from LLMs_OS.registry import register
-from LLMs_OS.core import render
-from LLMs_OS.exceptions import APIError
+from ..registry import register
+from ..exceptions import APIError
 
 @register('chat_completion')
-def chat_completion_action(task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Call OpenRouter API for chat completion"""
-    api_url = os.getenv('OPENROUTER_API_URL', 'http://mock-api:8000/api/v1')
-    api_key = os.getenv('OPENROUTER_API_KEY', 'sk-simulated-key')
+def chat_completion_action(task: dict, context: dict) -> dict:
+    """Call LLM API for chat completion"""
+    api_url = os.getenv('OPENROUTER_API_URL', 'https://openrouter.ai/api/v1')
+    api_key = os.getenv('OPENROUTER_API_KEY', '')
     
     model = task.get('model', 'openai/gpt-3.5-turbo')
     messages = task.get('messages', [])
     
-    # Render message content
-    for msg in messages:
-        if 'content' in msg:
-            msg['content'] = render(msg['content'], context)
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
     
-    # Make API call
-    response = requests.post(
-        f"{api_url}/chat/completions",
-        headers={
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json'
-        },
-        json={
-            'model': model,
-            'messages': messages,
-            'temperature': task.get('temperature', 0.7),
-            'max_tokens': task.get('max_tokens', 150)
-        },
-        timeout=30
-    )
+    data = {
+        'model': model,
+        'messages': messages
+    }
     
-    if response.status_code != 200:
-        raise APIError(f"API request failed: {response.text}", response.status_code)
-    
-    result = response.json()
-    content = result['choices'][0]['message']['content']
-    
-    return {'content': content, 'response': result}
+    try:
+        response = requests.post(
+            f'{api_url}/chat/completions',
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+        return {'content': content, 'model': model}
+        
+    except requests.RequestException as e:
+        raise APIError(f"API request failed: {e}")

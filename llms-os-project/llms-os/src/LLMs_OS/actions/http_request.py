@@ -1,35 +1,31 @@
 """HTTP request action"""
 import requests
-from typing import Dict, Any
-from LLMs_OS.registry import register
-from LLMs_OS.core import render
-from LLMs_OS.exceptions import APIError
+from ..registry import register
+from ..exceptions import APIError
 
 @register('http_request')
-def http_request_action(task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Make HTTP request"""
-    url = render(task.get('url', ''), context)
+def http_request_action(task: dict, context: dict) -> dict:
+    """Make HTTP requests"""
+    url = task.get('url', '')
     method = task.get('method', 'GET').upper()
     headers = task.get('headers', {})
-    body = task.get('body')
-    timeout = task.get('timeout', 30)
+    data = task.get('data')
     
     try:
         response = requests.request(
-            method=method,
-            url=url,
+            method,
+            url,
             headers=headers,
-            json=body if body else None,
-            timeout=timeout
+            json=data if method in ['POST', 'PUT', 'PATCH'] else None,
+            timeout=30
         )
+        response.raise_for_status()
         
         return {
             'status_code': response.status_code,
-            'headers': dict(response.headers),
-            'body': response.text,
-            'json': response.json() if response.headers.get('content-type', '').startswith('application/json') else None
+            'data': response.json() if response.content else None,
+            'headers': dict(response.headers)
         }
-    except Exception as e:
-        if not task.get('ignore_errors', False):
-            raise APIError(f"HTTP request failed: {e}")
-        return {'error': str(e)}
+        
+    except requests.RequestException as e:
+        raise APIError(f"HTTP request failed: {e}")

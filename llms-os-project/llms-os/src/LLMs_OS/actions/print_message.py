@@ -1,25 +1,34 @@
 """Print message action"""
-from typing import Dict, Any
-from LLMs_OS.registry import register
-from LLMs_OS.core import render
+from ..registry import register
+
+STYLES = {
+    'success': '\033[92m',  # Green
+    'error': '\033[91m',    # Red
+    'warning': '\033[93m',  # Yellow
+    'info': '\033[94m',     # Blue
+    'reset': '\033[0m'
+}
 
 @register('print_message')
-def print_message_action(task: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Print a formatted message"""
-    message = render(task.get('message', ''), context)
+def print_message_action(task: dict, context: dict) -> dict:
+    """Print a message with optional styling"""
+    message = task.get('message', '')
     style = task.get('style', 'info')
     
-    # Color codes
-    colors = {
-        'info': '\033[94m',
-        'success': '\033[92m',
-        'warning': '\033[93m',
-        'error': '\033[91m',
-        'debug': '\033[90m',
-    }
-    reset = '\033[0m'
+    # Simple template replacement
+    import re
+    for key, value in context.items():
+        # Handle nested attributes like {{ key.attribute }}
+        if isinstance(value, dict):
+            for attr, attr_value in value.items():
+                pattern = f'{{{{ *{key}\\.{attr} *}}}}'
+                message = re.sub(pattern, str(attr_value), message)
+        # Handle simple variables like {{ key }}
+        pattern = f'{{{{ *{key} *}}}}'
+        message = re.sub(pattern, str(value), message)
     
-    color = colors.get(style, colors['info'])
+    color = STYLES.get(style, STYLES['info'])
+    reset = STYLES['reset']
     print(f"{color}{message}{reset}")
     
-    return {'last_message': message}
+    return {'message': message, 'style': style}
