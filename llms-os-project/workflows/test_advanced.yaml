@@ -1,0 +1,50 @@
+metadata:
+  title: "🔬 Advanced Test Workflow"
+  description: "Test advanced features including parallel execution"
+  version: "1.0.0"
+
+tasks:
+  # Sequential setup
+  - action: print_message
+    message: "🔬 Starting advanced test workflow..."
+    style: info
+  
+  # Parallel API calls
+  - action: http_request
+    url: "http://mock-api:8000/api/v1/models"
+    method: GET
+    parallel: true
+    save_as: models_list
+  
+  - action: chat_completion
+    model: "openai/gpt-4"
+    messages:
+      - role: user
+        content: "Explain Docker in one sentence."
+    parallel: true
+    save_as: docker_explanation
+  
+  - action: chat_completion
+    model: "anthropic/claude-2"
+    messages:
+      - role: user
+        content: "What is Kubernetes?"
+    parallel: true
+    save_as: k8s_explanation
+  
+  # Sequential processing of results
+  - action: print_message
+    message: "📊 Parallel tasks completed!"
+    style: success
+  
+  # Error handling test
+  - action: http_request
+    url: "http://mock-api:8000/nonexistent"
+    method: GET
+    ignore_errors: true
+    continue_on_error: true
+    save_as: error_test
+  
+  - action: print_message
+    message: "✅ Advanced test completed!"
+    style: success

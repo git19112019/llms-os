@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  llms-os-dev:
+    build:
+      context: ./llms-os
+      dockerfile: Dockerfile.dev
+    image: llms-os:dev
+    container_name: llms-os-dev
+    environment:
+      - OPENROUTER_API_URL=http://mock-api:8000/api/v1
+      - OPENROUTER_API_KEY=sk-simulated-key
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+      - WATCHDOG_ENABLED=1
+    volumes:
+      - ./llms-os/src:/app:rw
+      - ./workflows:/app/workflows:ro
+      - ./output:/app/output
+    networks:
+      - llms-network
+    command: watchmedo auto-restart --patterns="*.py" --recursive -- python -m LLMs_OS.cli workflows/test_basic.yaml
+    stdin_open: true
+    tty: true

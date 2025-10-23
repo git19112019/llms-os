@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Mock OpenRouter API
+  mock-api:
+    build:
+      context: ./mock-api
+      dockerfile: Dockerfile
+    image: llms-os-mock-api:latest
+    container_name: llms-mock-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SIMULATED_API_KEY=${MOCK_API_KEY:-sk-simulated-key}
+      - ENABLE_METRICS=true
+      - DEBUG=false
+    networks:
+      - llms-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+  
+  # Main LLMs_OS CLI
+  llms-os:
+    build:
+      context: ./llms-os
+      dockerfile: Dockerfile
+    image: llms-os:latest
+    container_name: llms-os-cli
+    depends_on:
+      mock-api:
+        condition: service_healthy
+    environment:
+      - OPENROUTER_API_URL=http://mock-api:8000/api/v1
+      - OPENROUTER_API_KEY=${MOCK_API_KEY:-sk-simulated-key}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./workflows:/app/workflows:ro
+      - ./output:/app/output
+      - ./logs:/app/logs
+    networks:
+      - llms-network
+    command: workflows/test_basic.yaml
+    restart: no
+  
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: llms-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - llms-network
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    profiles:
+      - full
+    restart: unless-stopped
+
+networks:
+  llms-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  redis-data:
+  logs:
+  output:

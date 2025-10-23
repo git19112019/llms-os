@@ -1,0 +1,39 @@
+metadata:
+  title: "🧪 Basic Test Workflow"
+  description: "Test basic LLMs_OS functionality"
+  version: "1.0.0"
+
+tasks:
+  - action: print_message
+    message: "🚀 Starting basic test workflow..."
+    style: info
+  
+  - action: print_message
+    message: "Environment: {{ LOG_LEVEL | default('INFO') }}"
+    style: debug
+  
+  - action: http_request
+    url: "http://mock-api:8000/health"
+    method: GET
+    save_as: health_check
+  
+  - action: print_message
+    message: "Health check status: {{ health_check.status_code }}"
+    style: success
+  
+  - action: chat_completion
+    model: "openai/gpt-3.5-turbo"
+    messages:
+      - role: system
+        content: "You are a helpful assistant."
+      - role: user
+        content: "Write a haiku about testing."
+    save_as: haiku_result
+  
+  - action: print_message
+    message: "AI Response: {{ haiku_result }}"
+    style: info
+  
+  - action: print_message
+    message: "✅ Basic test completed successfully!"
+    style: success
